@@ -52,6 +52,19 @@ index 77405ec7f..e043dd61d 100644
  obj-$(CONFIG_MIHW)		+= mihw/
 +
 +obj-$(CONFIG_KSU) += kernelsu/
+diff --git a/drivers/iommu/arm/arm-smmu/arm-smmu.c b/drivers/iommu/arm/arm-smmu/arm-smmu.c
+index cc27fc553..d01aef7b5 100644
+--- a/drivers/iommu/arm/arm-smmu/arm-smmu.c
++++ b/drivers/iommu/arm/arm-smmu/arm-smmu.c
+@@ -65,7 +65,7 @@ module_param(disable_bypass, bool, S_IRUGO);
+ MODULE_PARM_DESC(disable_bypass,
+ 	"Disable bypass streams such that incoming transactions from devices that are not attached to an iommu domain will report an abort back to the device and will not be allowed to pass through the SMMU.");
+ 
+-#define (s2cr_init_val)(struct arm_smmu_s2cr){				\
++#define s2cr_init_val (struct arm_smmu_s2cr){				\
+ 	.type = disable_bypass ? S2CR_TYPE_FAULT : S2CR_TYPE_BYPASS,	\
+ }
+ 
 diff --git a/drivers/kernelsu/.clang-format b/drivers/kernelsu/.clang-format
 new file mode 100644
 index 000000000..f7a2ed1c0
@@ -15528,6 +15541,425 @@ index 000000000..e213dc15e
 +
 +    return has_error ? 1 : 0;
 +}
+diff --git a/drivers/kernelsu/uapi/app_profile.h b/drivers/kernelsu/uapi/app_profile.h
+new file mode 100644
+index 000000000..bf3f6446d
+--- /dev/null
++++ b/drivers/kernelsu/uapi/app_profile.h
+@@ -0,0 +1,67 @@
++#ifndef __KSU_UAPI_APP_PROFILE_H
++#define __KSU_UAPI_APP_PROFILE_H
++
++#include <linux/types.h>
++
++#define KSU_APP_PROFILE_VER 4
++#define KSU_MAX_PACKAGE_NAME 256
++/* NGROUPS_MAX for Linux is 65535 generally, but we only supports 32 groups. */
++#define KSU_MAX_GROUPS 32
++#define KSU_SELINUX_DOMAIN 64
++
++#define FLAG_KSU_NO_NEW_PRIVS (1ULL << 0)
++
++struct root_profile {
++    __s32 uid;
++    __s32 gid;
++
++    __u32 groups_count;
++    __s32 groups[KSU_MAX_GROUPS];
++
++    /* kernel_cap_t is u32[2] for capabilities v3 */
++    struct {
++        __u64 effective;
++        __u64 permitted;
++        __u64 inheritable;
++    } capabilities;
++
++    char selinux_domain[KSU_SELINUX_DOMAIN];
++
++    __s32 namespaces;
++
++    __u64 flags;
++};
++
++struct non_root_profile {
++    bool umount_modules;
++};
++
++struct app_profile {
++    /*
++     * It may be utilized for backward compatibility, although we have never
++     * explicitly made any promises regarding this.
++     */
++    __u32 version;
++
++    /* this is usually the package of the app, but can be other value for special apps */
++    char key[KSU_MAX_PACKAGE_NAME];
++    __s32 curr_uid;
++    bool allow_su;
++
++    union {
++        struct {
++            bool use_default;
++            char template_name[KSU_MAX_PACKAGE_NAME];
++
++            struct root_profile profile;
++        } rp_config;
++
++        struct {
++            bool use_default;
++
++            struct non_root_profile profile;
++        } nrp_config;
++    };
++};
++
++#endif
+diff --git a/drivers/kernelsu/uapi/feature.h b/drivers/kernelsu/uapi/feature.h
+new file mode 100644
+index 000000000..df2f68c15
+--- /dev/null
++++ b/drivers/kernelsu/uapi/feature.h
+@@ -0,0 +1,14 @@
++#ifndef __KSU_UAPI_FEATURE_H
++#define __KSU_UAPI_FEATURE_H
++
++enum ksu_feature_id {
++    KSU_FEATURE_SU_COMPAT = 0,
++    KSU_FEATURE_KERNEL_UMOUNT = 1,
++    KSU_FEATURE_SULOG = 2,
++    KSU_FEATURE_ADB_ROOT = 3,
++    KSU_FEATURE_SELINUX_HIDE = 4,
++
++    KSU_FEATURE_MAX
++};
++
++#endif
+diff --git a/drivers/kernelsu/uapi/ksu.h b/drivers/kernelsu/uapi/ksu.h
+new file mode 100644
+index 000000000..501a5df65
+--- /dev/null
++++ b/drivers/kernelsu/uapi/ksu.h
+@@ -0,0 +1,10 @@
++#ifndef __KSU_UAPI_KSU_H
++#define __KSU_UAPI_KSU_H
++
++#include "uapi/supercall.h"
++#include "uapi/app_profile.h"
++#include "uapi/feature.h"
++#include "uapi/selinux.h"
++#include "uapi/sulog.h"
++
++#endif // __KSU_UAPI_KSU_H
+\ No newline at end of file
+diff --git a/drivers/kernelsu/uapi/selinux.h b/drivers/kernelsu/uapi/selinux.h
+new file mode 100644
+index 000000000..a33915ed7
+--- /dev/null
++++ b/drivers/kernelsu/uapi/selinux.h
+@@ -0,0 +1,31 @@
++#ifndef __KSU_UAPI_SELINUX_H
++#define __KSU_UAPI_SELINUX_H
++
++#include <linux/types.h>
++
++static const __u32 KSU_SEPOLICY_CMD_NORMAL_PERM = 1;
++static const __u32 KSU_SEPOLICY_CMD_XPERM = 2;
++static const __u32 KSU_SEPOLICY_CMD_TYPE_STATE = 3;
++static const __u32 KSU_SEPOLICY_CMD_TYPE = 4;
++static const __u32 KSU_SEPOLICY_CMD_TYPE_ATTR = 5;
++static const __u32 KSU_SEPOLICY_CMD_ATTR = 6;
++static const __u32 KSU_SEPOLICY_CMD_TYPE_TRANSITION = 7;
++static const __u32 KSU_SEPOLICY_CMD_TYPE_CHANGE = 8;
++static const __u32 KSU_SEPOLICY_CMD_GENFSCON = 9;
++
++static const __u32 KSU_SEPOLICY_SUBCMD_NORMAL_PERM_ALLOW = 1;
++static const __u32 KSU_SEPOLICY_SUBCMD_NORMAL_PERM_DENY = 2;
++static const __u32 KSU_SEPOLICY_SUBCMD_NORMAL_PERM_AUDITALLOW = 3;
++static const __u32 KSU_SEPOLICY_SUBCMD_NORMAL_PERM_DONTAUDIT = 4;
++
++static const __u32 KSU_SEPOLICY_SUBCMD_XPERM_ALLOW = 1;
++static const __u32 KSU_SEPOLICY_SUBCMD_XPERM_AUDITALLOW = 2;
++static const __u32 KSU_SEPOLICY_SUBCMD_XPERM_DONTAUDIT = 3;
++
++static const __u32 KSU_SEPOLICY_SUBCMD_TYPE_STATE_PERMISSIVE = 1;
++static const __u32 KSU_SEPOLICY_SUBCMD_TYPE_STATE_ENFORCE = 2;
++
++static const __u32 KSU_SEPOLICY_SUBCMD_TYPE_CHANGE_CHANGE = 1;
++static const __u32 KSU_SEPOLICY_SUBCMD_TYPE_CHANGE_MEMBER = 2;
++
++#endif
+diff --git a/drivers/kernelsu/uapi/sulog.h b/drivers/kernelsu/uapi/sulog.h
+new file mode 100644
+index 000000000..00931dd62
+--- /dev/null
++++ b/drivers/kernelsu/uapi/sulog.h
+@@ -0,0 +1,32 @@
++#ifndef __KSU_UAPI_SULOG_H
++#define __KSU_UAPI_SULOG_H
++
++#include <linux/sched.h>
++#include <linux/types.h>
++
++#define KSU_SULOG_EVENT_VERSION 1
++#ifndef TASK_COMM_LEN
++#define TASK_COMM_LEN 16
++#endif
++
++enum ksu_sulog_event_type {
++    KSU_SULOG_EVENT_ROOT_EXECVE = 1,
++    KSU_SULOG_EVENT_SUCOMPAT = 2,
++    KSU_SULOG_EVENT_IOCTL_GRANT_ROOT = 3,
++};
++
++struct ksu_sulog_event {
++    __u16 version;
++    __u16 event_type;
++    __s32 retval;
++    __u32 pid;
++    __u32 tgid;
++    __u32 ppid;
++    __u32 uid;
++    __u32 euid;
++    char comm[TASK_COMM_LEN];
++    __u32 filename_len;
++    __u32 argv_len;
++} __packed;
++
++#endif
+diff --git a/drivers/kernelsu/uapi/supercall.h b/drivers/kernelsu/uapi/supercall.h
+new file mode 100644
+index 000000000..cd464b1e6
+--- /dev/null
++++ b/drivers/kernelsu/uapi/supercall.h
+@@ -0,0 +1,227 @@
++#ifndef __KSU_UAPI_SUPERCALL_H
++#define __KSU_UAPI_SUPERCALL_H
++
++#include <linux/ioctl.h>
++#include <linux/types.h>
++
++#include "uapi/app_profile.h"
++
++// 2: allowlist v4 root profile flags
++static const __u32 KERNEL_SU_UAPI_VERSION = 2;
++
++/* Magic numbers for reboot hook to install fd */
++static const __u32 KSU_INSTALL_MAGIC1 = 0xDEADBEEF;
++static const __u32 KSU_INSTALL_MAGIC2 = 0xCAFEBABE;
++static const __u32 KSU_FULL_VERSION_STRING = 255;
++
++struct ksu_become_daemon_cmd {
++    __u8 token[65]; /* Input: daemon token (null-terminated) */
++};
++
++static const __u32 EVENT_POST_FS_DATA = 1;
++static const __u32 EVENT_BOOT_COMPLETED = 2;
++static const __u32 EVENT_MODULE_MOUNTED = 3;
++
++static const __u32 KSU_GET_INFO_FLAG_LKM = (1U << 0);
++static const __u32 KSU_GET_INFO_FLAG_MANAGER = (1U << 1);
++static const __u32 KSU_GET_INFO_FLAG_LATE_LOAD = (1U << 2);
++static const __u32 KSU_GET_INFO_FLAG_PR_BUILD = (1U << 3);
++
++struct ksu_get_info_cmd {
++    __u32 version; /* Output: KERNEL_SU_VERSION */
++    __u32 flags; /* Output: KSU_GET_INFO_FLAG_* bits */
++    __u32 features; /* Output: max feature ID supported */
++    __u32 uapi_version; /* Output: KERNEL_SU_UAPI_VERSION */
++};
++
++struct ksu_get_info_legacy_cmd {
++    __u32 version; /* Output: KERNEL_SU_VERSION */
++    __u32 flags; /* Output: KSU_GET_INFO_FLAG_* bits */
++    __u32 features; /* Output: max feature ID supported */
++};
++
++struct ksu_report_event_cmd {
++    __u32 event; /* Input: EVENT_POST_FS_DATA, EVENT_BOOT_COMPLETED, etc. */
++};
++
++struct ksu_set_sepolicy_cmd {
++    __u64 data_len; /* Input: bytes of serialized command payload */
++    __aligned_u64 data; /* Input: pointer to serialized payload */
++};
++
++struct ksu_sepolicy_cmd_hdr {
++    __u32 cmd; /* Input: command type, CMD_* */
++    __u32 subcmd; /* Input: command subtype */
++};
++/*
++ * After each ksu_sepolicy_cmd_hdr, command arguments are encoded sequentially as:
++ * [u32 len][len bytes][\0], where len excludes the trailing '\0'.
++ * len == 0 represents ALL.
++ * Argument count is derived from cmd:
++ * KSU_SEPOLICY_CMD_NORMAL_PERM=4, KSU_SEPOLICY_CMD_XPERM=5,
++ * KSU_SEPOLICY_CMD_TYPE_STATE=1, KSU_SEPOLICY_CMD_TYPE=2,
++ * KSU_SEPOLICY_CMD_TYPE_ATTR=2, KSU_SEPOLICY_CMD_ATTR=1,
++ * KSU_SEPOLICY_CMD_TYPE_TRANSITION=5, KSU_SEPOLICY_CMD_TYPE_CHANGE=4,
++ * KSU_SEPOLICY_CMD_GENFSCON=3.
++ */
++
++struct ksu_check_safemode_cmd {
++    __u8 in_safe_mode; /* Output: true if in safe mode, false otherwise */
++};
++
++/* deprecated */
++struct ksu_get_allow_list_cmd {
++    __u32 uids[128]; /* Output: array of allowed/denied UIDs */
++    __u32 count; /* Output: number of UIDs in array */
++    __u8 allow; /* Input: true for allow list, false for deny list */
++};
++
++struct ksu_new_get_allow_list_cmd {
++    __u16 count; /* Input / Output: number of UIDs in array */
++    __u16 total_count; /* Output: total number of UIDs in requested list */
++    __u32 uids[0]; /* Output: array of allowed/denied UIDs */
++};
++
++struct ksu_uid_granted_root_cmd {
++    __u32 uid; /* Input: target UID to check */
++    __u8 granted; /* Output: true if granted, false otherwise */
++};
++
++struct ksu_uid_should_umount_cmd {
++    __u32 uid; /* Input: target UID to check */
++    __u8 should_umount; /* Output: true if should umount, false otherwise */
++};
++
++struct ksu_get_manager_appid_cmd {
++    __u32 appid; /* Output: manager app id */
++};
++
++struct ksu_get_app_profile_cmd {
++    struct app_profile profile; /* Input/Output: app profile structure */
++};
++
++struct ksu_set_app_profile_cmd {
++    struct app_profile profile; /* Input: app profile structure */
++};
++
++struct ksu_get_feature_cmd {
++    __u32 feature_id; /* Input: feature ID (enum ksu_feature_id) */
++    __u64 value; /* Output: feature value/state */
++    __u8 supported; /* Output: true if feature is supported, false otherwise */
++};
++
++struct ksu_set_feature_cmd {
++    __u32 feature_id; /* Input: feature ID (enum ksu_feature_id) */
++    __u64 value; /* Input: feature value/state to set */
++};
++
++struct ksu_get_wrapper_fd_cmd {
++    __u32 fd; /* Input: userspace fd */
++    __u32 flags; /* Input: flags of userspace fd */
++};
++
++struct ksu_manage_mark_cmd {
++    __u32 operation; /* Input: KSU_MARK_* */
++    __s32 pid; /* Input: target pid (0 for all processes) */
++    __u32 result; /* Output: for get operation - mark status or reg_count */
++};
++
++static const __u32 KSU_MARK_GET = 1;
++static const __u32 KSU_MARK_MARK = 2;
++static const __u32 KSU_MARK_UNMARK = 3;
++static const __u32 KSU_MARK_REFRESH = 4;
++
++struct ksu_nuke_ext4_sysfs_cmd {
++    __aligned_u64 arg; /* Input: mnt pointer */
++};
++
++struct ksu_add_try_umount_cmd {
++    __aligned_u64 arg; /* char ptr, this is the mountpoint */
++    __u32 flags; /* this is the flag we use for it */
++    __u8 mode; /* denotes what to do with it 0:wipe_list 1:add_to_list 2:delete_entry */
++};
++
++struct ksu_get_sulog_fd_cmd {
++    __u32 flags; /* Input: reserved for future use, must be 0 */
++};
++
++struct ksu_set_spoof_version_cmd {
++    __u8 release[65]; /* Input: e.g., "5.10.115-android12-9-g00000000" */
++    __u8 version[65]; /* Input: e.g., "#1 SMP PREEMPT Thu Jan 1 00:00:00 UTC 2026" */
++};
++
++// List current umount entries
++struct ksu_list_try_umount_cmd {
++    __aligned_u64 arg; // User buffer
++    __u32 buf_size; // Buffer size provided by userspace
++};
++
++static const __u8 KSU_UMOUNT_WIPE = 0; /* ignore everything and wipe list */
++static const __u8 KSU_UMOUNT_ADD = 1; /* add entry (path + flags) */
++static const __u8 KSU_UMOUNT_DEL = 2; /* delete entry, strcmp */
++
++// Other command structures
++struct ksu_get_full_version_cmd {
++    char version_full[255]; // Output: full version string
++};
++
++struct ksu_hook_type_cmd {
++    char hook_type[32]; // Output: hook type string
++};
++
++struct ksu_enable_kpm_cmd {
++    __u8 enabled; // Output: true if KPM is enabled
++};
++
++static const __u32 SUKISU_KPM_LOAD = 1;
++static const __u32 SUKISU_KPM_UNLOAD = 2;
++static const __u32 SUKISU_KPM_NUM = 3;
++static const __u32 SUKISU_KPM_LIST = 4;
++static const __u32 SUKISU_KPM_INFO = 5;
++static const __u32 SUKISU_KPM_CONTROL = 6;
++static const __u32 SUKISU_KPM_VERSION = 7;
++
++struct ksu_kpm_cmd {
++    __aligned_u64 __user control_code;
++    __aligned_u64 __user arg1;
++    __aligned_u64 __user arg2;
++    __aligned_u64 __user result_code;
++};
++
++/* IOCTL command definitions */
++static const __u32 KSU_IOCTL_GRANT_ROOT = _IOC(_IOC_NONE, 'K', 1, 0);
++static const __u32 KSU_IOCTL_GET_INFO = _IOR('K', 2, struct ksu_get_info_cmd);
++/* deprecated */
++static const __u32 KSU_IOCTL_GET_INFO_LEGACY = _IOC(_IOC_READ, 'K', 2, 0);
++static const __u32 KSU_IOCTL_REPORT_EVENT = _IOC(_IOC_WRITE, 'K', 3, 0);
++static const __u32 KSU_IOCTL_SET_SEPOLICY = _IOC(_IOC_READ | _IOC_WRITE, 'K', 4, 0);
++static const __u32 KSU_IOCTL_CHECK_SAFEMODE = _IOC(_IOC_READ, 'K', 5, 0);
++/* deprecated */
++static const __u32 KSU_IOCTL_GET_ALLOW_LIST = _IOC(_IOC_READ | _IOC_WRITE, 'K', 6, 0);
++/* deprecated */
++static const __u32 KSU_IOCTL_GET_DENY_LIST = _IOC(_IOC_READ | _IOC_WRITE, 'K', 7, 0);
++static const __u32 KSU_IOCTL_NEW_GET_ALLOW_LIST = _IOWR('K', 6, struct ksu_new_get_allow_list_cmd);
++static const __u32 KSU_IOCTL_NEW_GET_DENY_LIST = _IOWR('K', 7, struct ksu_new_get_allow_list_cmd);
++static const __u32 KSU_IOCTL_UID_GRANTED_ROOT = _IOC(_IOC_READ | _IOC_WRITE, 'K', 8, 0);
++static const __u32 KSU_IOCTL_UID_SHOULD_UMOUNT = _IOC(_IOC_READ | _IOC_WRITE, 'K', 9, 0);
++static const __u32 KSU_IOCTL_GET_MANAGER_APPID = _IOC(_IOC_READ, 'K', 10, 0);
++static const __u32 KSU_IOCTL_GET_APP_PROFILE = _IOC(_IOC_READ | _IOC_WRITE, 'K', 11, 0);
++static const __u32 KSU_IOCTL_SET_APP_PROFILE = _IOC(_IOC_WRITE, 'K', 12, 0);
++static const __u32 KSU_IOCTL_GET_FEATURE = _IOC(_IOC_READ | _IOC_WRITE, 'K', 13, 0);
++static const __u32 KSU_IOCTL_SET_FEATURE = _IOC(_IOC_WRITE, 'K', 14, 0);
++static const __u32 KSU_IOCTL_GET_WRAPPER_FD = _IOC(_IOC_WRITE, 'K', 15, 0);
++static const __u32 KSU_IOCTL_MANAGE_MARK = _IOC(_IOC_READ | _IOC_WRITE, 'K', 16, 0);
++static const __u32 KSU_IOCTL_NUKE_EXT4_SYSFS = _IOC(_IOC_WRITE, 'K', 17, 0);
++static const __u32 KSU_IOCTL_ADD_TRY_UMOUNT = _IOC(_IOC_WRITE, 'K', 18, 0);
++static const __u32 KSU_IOCTL_SET_INIT_PGRP = _IO('K', 19);
++static const __u32 KSU_IOCTL_GET_SULOG_FD = _IOW('K', 20, struct ksu_get_sulog_fd_cmd);
++static const __u32 KSU_IOCTL_DISABLE_ESCAPE_TO_ROOT = _IO('K', 21);
++// Other IOCTL command definitions
++static const __u32 KSU_IOCTL_GET_FULL_VERSION = _IOC(_IOC_READ, 'K', 100, 0);
++static const __u32 KSU_IOCTL_HOOK_TYPE = _IOC(_IOC_READ, 'K', 101, 0);
++static const __u32 KSU_IOCTL_ENABLE_KPM = _IOC(_IOC_READ, 'K', 102, 0);
++static const __u32 KSU_IOCTL_LIST_TRY_UMOUNT = _IOC(_IOC_READ | _IOC_WRITE, 'K', 103, 0);
++static const __u32 KSU_IOCTL_SET_SPOOF_VERSION = _IOC(_IOC_WRITE, 'K', 104, 0);
++static const __u32 KSU_IOCTL_KPM = _IOC(_IOC_READ | _IOC_WRITE, 'K', 200, 0);
++
++#endif
+\ No newline at end of file
 diff --git a/drivers/mihw/Kconfig b/drivers/mihw/Kconfig
 new file mode 100644
 index 000000000..554e9c95b
