@@ -1,0 +1,13 @@
+[core]
+	repositoryformatversion = 0
+	filemode = false
+	bare = false
+	logallrefupdates = true
+	symlinks = false
+	ignorecase = true
+[remote "origin"]
+	url = https://github.com/ESK-Project/AnyKernel3.git
+	fetch = +refs/heads/xaga:refs/remotes/origin/xaga
+[branch "xaga"]
+	remote = origin
+	merge = refs/heads/xaga

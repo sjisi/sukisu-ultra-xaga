@@ -1,0 +1,57 @@
+name: Build SukiSU Ultra xaga kernel
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'build/**'
+      - '.github/workflows/build-xaga.yml'
+      - 'xaga-kernel/**'
+
+concurrency:
+  group: xaga-build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build AnyKernel3 (${{ matrix.target }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [hyperos, miui]
+    steps:
+      - name: Checkout project
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bc bison flex libssl-dev make zip zstd xz-utils \
+            kmod cpio python3 ca-certificates git ccache llvm
+
+      - name: Build kernel and package AnyKernel3 (${{ matrix.target }})
+        run: |
+          TARGET="${{ matrix.target }}" \
+          KERNEL_SRC="$GITHUB_WORKSPACE/kernel" \
+          JOBS="$(nproc --all)" \
+          ./build/build_xaga.sh
+
+      - name: Upload AnyKernel3 package
+        uses: actions/upload-artifact@v4
+        with:
+          name: xaga-anykernel3-${{ matrix.target }}
+          path: |
+            out/*.zip
+            out/last-package.txt
+          if-no-files-found: error
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: work/*.log
+          if-no-files-found: ignore
