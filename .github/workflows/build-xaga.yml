@@ -16,7 +16,7 @@ concurrency:
 jobs:
   build:
     name: Build AnyKernel3 (${{ matrix.target }})
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-22.04
     timeout-minutes: 180
     strategy:
       fail-fast: false
@@ -30,12 +30,13 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y bc bison flex libssl-dev make zip zstd xz-utils \
-            kmod cpio python3 ca-certificates git ccache llvm
+            kmod cpio python3 ca-certificates git ccache clang-14 lld-14 llvm-14
 
       - name: Build kernel and package AnyKernel3 (${{ matrix.target }})
         run: |
           TARGET="${{ matrix.target }}" \
           KERNEL_SRC="$GITHUB_WORKSPACE/kernel" \
+          CLANG_BIN=/usr/lib/llvm-14/bin \
           JOBS="$(nproc --all)" \
           ./build/build_xaga.sh
 

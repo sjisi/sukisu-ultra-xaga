@@ -100,24 +100,39 @@ prepare_kernel() {
 # 2. Toolchain
 ###############################################################################
 prepare_toolchain() {
+    # Priority:
+    #   1. $CLANG_BIN (explicit, e.g. /usr/lib/llvm-14/bin)
+    #   2. $CLANG_DIR/bin (downloaded AOSP toolchain)
+    #   3. system clang-14..18 (distro packages)
+    if [[ -n "${CLANG_BIN:-}" && -x "$CLANG_BIN/clang" ]]; then
+        info "Using toolchain from CLANG_BIN: $CLANG_BIN"
+        export PATH="$CLANG_BIN:$PATH"
+        return
+    fi
     if [[ -x "$CLANG_DIR/bin/clang" ]]; then
-        info "Using existing toolchain: $CLANG_DIR"
+        info "Using existing AOSP toolchain: $CLANG_DIR/bin"
+        export PATH="$CLANG_DIR/bin:$PATH"
         return
     fi
 
-    info "Downloading AOSP Clang toolchain (this is a large download)"
-    mkdir -p "$WORK_DIR"
-    local url
-    url=$(curl -fsSL "https://api.github.com/repos/bachnxuan/aosp_clang_mirror/releases/latest" \
-        | grep -o '"browser_download_url": *"[^"]*clang-r[^"]*\.tar\.gz"' | head -n1 | cut -d'"' -f4)
-    [[ -n "$url" ]] || die "Failed to resolve Clang download URL"
+    local sys_clang
+    for v in 14 15 16 17 18; do
+        if [[ -x "/usr/lib/llvm-$v/bin/clang" ]]; then
+            sys_clang="/usr/lib/llvm-$v/bin"
+            break
+        fi
+        if command -v "clang-$v" >/dev/null 2>&1; then
+            sys_clang="$(dirname "$(command -v "clang-$v")")"
+            break
+        fi
+    done
+    if [[ -n "${sys_clang:-}" ]]; then
+        info "Using system LLVM $v toolchain: $sys_clang"
+        export PATH="$sys_clang:$PATH"
+        return
+    fi
 
-    curl -fL --retry 5 -o "$WORK_DIR/clang.tar.gz" "$url"
-    mkdir -p "$CLANG_DIR"
-    tar -xzf "$WORK_DIR/clang.tar.gz" -C "$CLANG_DIR"
-    rm -f "$WORK_DIR/clang.tar.gz"
-    [[ -x "$CLANG_DIR/bin/clang" ]] || die "Clang toolchain extraction failed"
-    ok "Toolchain ready: $("$CLANG_DIR/bin/clang" --version | head -n1)"
+    die "No usable Clang toolchain found. Install one, e.g. on Ubuntu 22.04: sudo apt install clang-14 lld-14 llvm-14, then set CLANG_BIN=/usr/lib/llvm-14/bin"
 }
 
 ###############################################################################
@@ -147,14 +162,14 @@ build_kernel() {
 
     info "Building kernel (Image + dtbs + modules) with $JOBS jobs"
     make -C "$KERNEL_SRC" O="$KERNEL_OUT" ARCH=arm64 \
-        CC="$CLANG_DIR/bin/clang" CROSS_COMPILE=aarch64-linux-gnu- \
-        LLVM=1 LD="$CLANG_DIR/bin/ld.lld" LLVM_IAS=1 \
+        CC=clang CROSS_COMPILE=aarch64-linux-gnu- \
+        LLVM=1 LD=ld.lld LLVM_IAS=1 \
         -j"$JOBS" Image modules
 
     if [[ "$TARGET" == "miui" ]]; then
         make -C "$KERNEL_SRC" O="$KERNEL_OUT" ARCH=arm64 \
-            CC="$CLANG_DIR/bin/clang" CROSS_COMPILE=aarch64-linux-gnu- \
-            LLVM=1 LD="$CLANG_DIR/bin/ld.lld" LLVM_IAS=1 \
+            CC=clang CROSS_COMPILE=aarch64-linux-gnu- \
+            LLVM=1 LD=ld.lld LLVM_IAS=1 \
             INSTALL_MOD_PATH="$MODULES_STAGE" modules_install
     fi
 
