@@ -15968,3 +15968,20 @@ index 000000000..554e9c95b
 @@ -0,0 +1,2 @@
 +# Stub: mihw driver sources are not part of the public kernel tree.
 +# Kept so that `source "drivers/mihw/Kconfig"` resolves during kconfig.
+diff --git a/drivers/misc/mediatek/nfc/st21nfc/st21nfc.c b/drivers/misc/mediatek/nfc/st21nfc/st21nfc.c
+index 17a75b928..8b95d68b8 100644
+--- a/drivers/misc/mediatek/nfc/st21nfc/st21nfc.c
++++ b/drivers/misc/mediatek/nfc/st21nfc/st21nfc.c
+@@ -1242,6 +1242,12 @@ static const struct of_device_id st21nfc_of_match[] = {
+ };
+ MODULE_DEVICE_TABLE(of, st21nfc_of_match);
+ 
++static const struct acpi_device_id st21nfc_acpi_match[] = {
++	{ "SMO2100", 0 },
++	{}
++};
++MODULE_DEVICE_TABLE(acpi, st21nfc_acpi_match);
++
+ static const struct dev_pm_ops st21nfc_pm_ops = { SET_SYSTEM_SLEEP_PM_OPS(
+ 	st21nfc_suspend, st21nfc_resume) };
+ 
