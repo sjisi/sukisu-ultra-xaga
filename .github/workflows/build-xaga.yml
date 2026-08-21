@@ -33,6 +33,7 @@ jobs:
           TARGET="${{ matrix.target }}" \
           KERNEL_SRC="$GITHUB_WORKSPACE/kernel" \
           CLANG_BIN=/usr/lib/llvm-14/bin \
+          KCFLAGS_EXTRA="${{ matrix.target == 'miui' && '-Wno-error' || '' }}" \
           JOBS="$(nproc --all)" \
           ./build/build_xaga.sh
 

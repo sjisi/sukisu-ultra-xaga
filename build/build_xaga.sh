@@ -164,12 +164,14 @@ build_kernel() {
     make -C "$KERNEL_SRC" O="$KERNEL_OUT" ARCH=arm64 \
         CC=clang CROSS_COMPILE=aarch64-linux-gnu- \
         LLVM=1 LD=ld.lld LLVM_IAS=1 \
-        -j"$JOBS" Image modules
+        -j"$JOBS" Image modules \
+        ${KCFLAGS_EXTRA:+"KCFLAGS=$KCFLAGS_EXTRA"}
 
     if [[ "$TARGET" == "miui" ]]; then
         make -C "$KERNEL_SRC" O="$KERNEL_OUT" ARCH=arm64 \
             CC=clang CROSS_COMPILE=aarch64-linux-gnu- \
             LLVM=1 LD=ld.lld LLVM_IAS=1 \
+            ${KCFLAGS_EXTRA:+"KCFLAGS=$KCFLAGS_EXTRA"} \
             INSTALL_MOD_PATH="$MODULES_STAGE" modules_install
     fi
 
@@ -200,7 +202,7 @@ stage_vendor_boot_modules() {
     local -a modules
 
     mkdir -p "$MOD_STAGE/vendor_boot/lib/modules"
-    krel="$(make -s -C "$KERNEL_SRC" O="$KERNEL_OUT" kernelrelease)"
+    krel="$(make -s -C "$KERNEL_SRC" O="$KERNEL_OUT" kernelversion | head -n1)"
     src="$MODULES_STAGE/lib/modules/$krel"
     payload="$MOD_STAGE/vendor_boot"
     mods_dir="$payload/lib/modules"
@@ -260,10 +262,11 @@ stage_vendor_dlkm_modules() {
 package_anykernel3() {
     info "Packaging AnyKernel3"
     local version
-    version="$(make -s -C "$KERNEL_SRC" O="$KERNEL_OUT" kernelrelease)"
+    version="$(make -s -C "$KERNEL_SRC" O="$KERNEL_OUT" kernelversion | head -n1)"
+    version="${version//[^0-9a-zA-Z._-]/_}"
     local package_name="sukisu-ultra-$version-xaga-$TARGET"
     local package_path="$OUT_DIR/$package_name-AnyKernel3.zip"
-    mkdir -p "$OUT_DIR"
+    mkdir -p "$(dirname "$package_path")"
 
     (
         cd "$AK3_DIR"
