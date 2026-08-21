@@ -9,10 +9,6 @@ on:
       - '.github/workflows/build-xaga.yml'
       - 'xaga-kernel/**'
 
-concurrency:
-  group: xaga-build-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
   build:
     name: Build AnyKernel3 (${{ matrix.target }})
